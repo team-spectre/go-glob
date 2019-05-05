@@ -5,7 +5,7 @@ import (
 )
 
 type Glob struct {
-	pattern   string
+	runes     []rune
 	segments  []segment
 	minLength uint
 	maxLength uint
@@ -39,18 +39,22 @@ func (g *Glob) RuneMatch(input []rune) bool {
 	return g.RunesMatcher(input).Matches()
 }
 
-func (g *Glob) String() string {
-	if g == nil || len(g.segments) == 0 {
-		return ""
+func (g *Glob) Runes() []rune {
+	if g != nil && len(g.segments) > 0 {
+		return g.runes
 	}
-	return g.pattern
+	return nil
+}
+
+func (g *Glob) String() string {
+	return runesToString(g.Runes())
 }
 
 func (g *Glob) GoString() string {
-	if g == nil || len(g.segments) == 0 {
-		return "nil"
+	if g != nil && len(g.segments) > 0 {
+		return fmt.Sprintf("glob.MustCompile(%q)", runesToString(g.runes))
 	}
-	return fmt.Sprintf("glob.MustCompile(%q)", g.pattern)
+	return "nil"
 }
 
 var _ fmt.Stringer = (*Glob)(nil)
@@ -86,7 +90,7 @@ func Compile(input string) (*Glob, error) {
 	}
 
 	g := &Glob{
-		pattern:   input,
+		runes:     p.runes,
 		segments:  p.segments,
 		minLength: p.minLength,
 		maxLength: p.maxLength,

@@ -5,12 +5,15 @@ import (
 	"testing"
 )
 
+type globCompileExpectation func(*testing.T, *Glob)
+type runeMatcherCast func(RuneMatcher) (interface{}, bool)
+
 const (
-	emptyPattern    = ""
+	emptyString     = ""
 	emptyGoString   = "nil"
-	simplePattern   = "foo/bar/[0-9][0-9]-?"
+	simpleString    = "foo/bar/[0-9][0-9]-?"
 	simpleGoString  = "glob.MustCompile(\"foo/bar/[0-9][0-9]-?\")"
-	complexPattern  = "foo/bar/**/[0-9][0-9]-*.[ch]"
+	complexString   = "foo/bar/**/[0-9][0-9]-*.[ch]"
 	complexGoString = "glob.MustCompile(\"foo/bar/**/[0-9][0-9]-*.[ch]\")"
 )
 
@@ -19,6 +22,12 @@ const (
 	digitDense1 = 0x0000000000000000
 	chDense0    = 0x0000000000000000
 	chDense1    = 0x0000010800000000
+)
+
+var (
+	emptyRunes   = []rune(emptyString)
+	simpleRunes  = []rune(simpleString)
+	complexRunes = []rune(complexString)
 )
 
 var (
@@ -40,59 +49,73 @@ var (
 	}
 )
 
-func TestGlob_Compile_Empty(t *testing.T) {
-	g, err := Compile(emptyPattern)
-	if err != nil {
-		t.Errorf("failed to parse %q: %v", emptyPattern, err)
+func TestGlob_Compile(t *testing.T) {
+	type testrow struct {
+		Name              string
+		Pattern           string
+		ExpectNil         bool
+		ExpectNumSegments uint
+		Expectations      []globCompileExpectation
 	}
-	if err == nil && g != nil {
-		t.Errorf("Compile: unexpected non-nil value %#v", *g)
+	testdata := []testrow{
+		{
+			Name:      "Empty",
+			Pattern:   emptyString,
+			ExpectNil: true,
+		},
+		{
+			Name:              "Simple",
+			Pattern:           simpleString,
+			ExpectNumSegments: 5,
+			Expectations: []globCompileExpectation{
+				expectLiteralSegment(0, "foo/bar/"),
+				expectRuneMatchSegment(1, (*runeMatchRange)(nil), digitRange, asRange),
+				expectRuneMatchSegment(2, (*runeMatchRange)(nil), digitRange, asRange),
+				expectLiteralSegment(3, "-"),
+				expectSpecialSegment(4, questionSegment),
+			},
+		},
+		{
+			Name:              "Complex",
+			Pattern:           complexString,
+			ExpectNumSegments: 8,
+			Expectations: []globCompileExpectation{
+				expectLiteralSegment(0, "foo/bar/"),
+				expectSpecialSegment(1, doubleStarSlashSegment),
+				expectRuneMatchSegment(2, (*runeMatchRange)(nil), digitRange, asRange),
+				expectRuneMatchSegment(3, (*runeMatchRange)(nil), digitRange, asRange),
+				expectLiteralSegment(4, "-"),
+				expectSpecialSegment(5, starSegment),
+				expectLiteralSegment(6, "."),
+				expectRuneMatchSegment(7, (*runeMatchSet)(nil), chSet, asSet),
+			},
+		},
 	}
-	g = MustCompile(emptyPattern)
-	if g != nil {
-		t.Errorf("Compile: unexpected non-nil value %#v", *g)
+	for _, row := range testdata {
+		t.Run(row.Name, func(t *testing.T) {
+			g, err := Compile(row.Pattern)
+			if err != nil {
+				t.Errorf("expected success, got %v", err)
+				return
+			}
+			if g == nil {
+				if !row.ExpectNil {
+					t.Error("expected non-nil, got nil")
+				}
+				return
+			}
+			if row.ExpectNil {
+				t.Error("expected nil, got non-nil")
+				return
+			}
+			if n := uint(len(g.segments)); n != row.ExpectNumSegments {
+				t.Errorf("expected %d segments, got %d segments", row.ExpectNumSegments, n)
+			}
+			for _, expect := range row.Expectations {
+				expect(t, g)
+			}
+		})
 	}
-}
-
-func TestGlob_Compile_Simple(t *testing.T) {
-	g, err := Compile(simplePattern)
-	if err != nil {
-		t.Errorf("failed to parse %q: %v", simplePattern, err)
-		return
-	}
-	if g.pattern != simplePattern {
-		t.Errorf("Glob.pattern: expected %q, got %q", simplePattern, g.pattern)
-	}
-	if len(g.segments) != 5 {
-		t.Errorf("Glob.segments: expected len %d, got len %d", 5, len(g.segments))
-	}
-	expectLiteralSegment(t, g, 0, "foo/bar/")
-	expectRuneMatchSegment(t, g, 1, (*runeMatchRange)(nil), digitRange, asRange)
-	expectRuneMatchSegment(t, g, 2, (*runeMatchRange)(nil), digitRange, asRange)
-	expectLiteralSegment(t, g, 3, "-")
-	expectSpecialSegment(t, g, 4, questionSegment)
-}
-
-func TestGlob_Compile_Complex(t *testing.T) {
-	g, err := Compile(complexPattern)
-	if err != nil {
-		t.Errorf("failed to parse %q: %v", complexPattern, err)
-		return
-	}
-	if g.pattern != complexPattern {
-		t.Errorf("Glob.pattern: expected %q, got %q", complexPattern, g.pattern)
-	}
-	if len(g.segments) != 8 {
-		t.Errorf("Glob.segments: expected len %d, got len %d", 8, len(g.segments))
-	}
-	expectLiteralSegment(t, g, 0, "foo/bar/")
-	expectSpecialSegment(t, g, 1, doubleStarSlashSegment)
-	expectRuneMatchSegment(t, g, 2, (*runeMatchRange)(nil), digitRange, asRange)
-	expectRuneMatchSegment(t, g, 3, (*runeMatchRange)(nil), digitRange, asRange)
-	expectLiteralSegment(t, g, 4, "-")
-	expectSpecialSegment(t, g, 5, starSegment)
-	expectLiteralSegment(t, g, 6, ".")
-	expectRuneMatchSegment(t, g, 7, (*runeMatchSet)(nil), chSet, asSet)
 }
 
 func TestGlob_Compile_Failure(t *testing.T) {
@@ -102,6 +125,11 @@ func TestGlob_Compile_Failure(t *testing.T) {
 		ErrorString string
 	}
 	testdata := []testrow{
+		{
+			Name:        "TripleStar",
+			Pattern:     "***",
+			ErrorString: "failed to parse glob pattern: \"***\": unexpected '***'",
+		},
 		{
 			Name:        "UnmatchedCloseBracket",
 			Pattern:     "]",
@@ -128,7 +156,7 @@ func TestGlob_Compile_Failure(t *testing.T) {
 			ErrorString: "failed to parse glob pattern: \"[^[\": unexpected '['",
 		},
 		{
-			Name:        "DoubleOpenBracket2",
+			Name:        "DoubleOpenBracket3",
 			Pattern:     "[a[",
 			ErrorString: "failed to parse glob pattern: \"[a[\": unexpected '['",
 		},
@@ -209,62 +237,72 @@ func TestGlob_Compile_Failure(t *testing.T) {
 	}
 }
 
-func expectLiteralSegment(t *testing.T, g *Glob, index uint, expect string) {
-	if index < uint(len(g.segments)) {
-		seg := g.segments[index]
-		if seg.stype != literalSegment {
-			t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, literalSegment, seg.stype)
-			return
-		}
-		actual := runesToString(seg.runes)
-		if actual != expect {
-			t.Errorf("Glob.segments[%d].runes: expected %q, got %q", index, expect, actual)
-		}
-		if seg.matcher != nil {
-			t.Errorf("Glob.segments[%d].matcher: expected nil, got %T", index, seg.matcher)
+func TestGlob_MustCompile(t *testing.T) {
+	_ = MustCompile(emptyString)
+}
+
+func expectLiteralSegment(index uint, expect string) globCompileExpectation {
+	return func(t *testing.T, g *Glob) {
+		if index < uint(len(g.segments)) {
+			seg := g.segments[index]
+			if seg.stype != literalSegment {
+				t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, literalSegment, seg.stype)
+				return
+			}
+			actual := runesToString(seg.runes)
+			if actual != expect {
+				t.Errorf("Glob.segments[%d].runes: expected %q, got %q", index, expect, actual)
+			}
+			if seg.matcher != nil {
+				t.Errorf("Glob.segments[%d].matcher: expected nil, got %T", index, seg.matcher)
+			}
 		}
 	}
 }
 
-func expectRuneMatchSegment(t *testing.T, g *Glob, index uint, prototype RuneMatcher, expect interface{}, cast func(RuneMatcher) (interface{}, bool)) {
-	if index < uint(len(g.segments)) {
-		seg := g.segments[index]
-		if seg.stype != runeMatchSegment {
-			t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, runeMatchSegment, seg.stype)
-			return
-		}
-		if seg.runes != nil {
-			str := runesToString(seg.runes)
-			t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.runes))
-		}
-		if seg.matcher == nil {
-			t.Errorf("Glob.segments[%d].matcher: expected %T, got nil", index, prototype)
-			return
-		}
-		actual, ok := cast(seg.matcher)
-		if !ok {
-			t.Errorf("Glob.segments[%d].matcher: expected %T, got %T", index, prototype, seg.matcher)
-			return
-		}
-		if !reflect.DeepEqual(actual, expect) {
-			t.Errorf("Glob.segments[%d].matcher: expected %#v, got %#v", index, expect, actual)
+func expectRuneMatchSegment(index uint, prototype RuneMatcher, expect interface{}, cast runeMatcherCast) globCompileExpectation {
+	return func(t *testing.T, g *Glob) {
+		if index < uint(len(g.segments)) {
+			seg := g.segments[index]
+			if seg.stype != runeMatchSegment {
+				t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, runeMatchSegment, seg.stype)
+				return
+			}
+			if seg.runes != nil {
+				str := runesToString(seg.runes)
+				t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.runes))
+			}
+			if seg.matcher == nil {
+				t.Errorf("Glob.segments[%d].matcher: expected %T, got nil", index, prototype)
+				return
+			}
+			actual, ok := cast(seg.matcher)
+			if !ok {
+				t.Errorf("Glob.segments[%d].matcher: expected %T, got %T", index, prototype, seg.matcher)
+				return
+			}
+			if !reflect.DeepEqual(actual, expect) {
+				t.Errorf("Glob.segments[%d].matcher: expected %#v, got %#v", index, expect, actual)
+			}
 		}
 	}
 }
 
-func expectSpecialSegment(t *testing.T, g *Glob, index uint, expect segmentType) {
-	if index < uint(len(g.segments)) {
-		seg := g.segments[index]
-		if seg.stype != expect {
-			t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, expect, seg.stype)
-			return
-		}
-		if seg.runes != nil {
-			str := runesToString(seg.runes)
-			t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.runes))
-		}
-		if seg.matcher != nil {
-			t.Errorf("Glob.segments[%d].matcher: expected nil, got %T", index, seg.matcher)
+func expectSpecialSegment(index uint, expect segmentType) globCompileExpectation {
+	return func(t *testing.T, g *Glob) {
+		if index < uint(len(g.segments)) {
+			seg := g.segments[index]
+			if seg.stype != expect {
+				t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, expect, seg.stype)
+				return
+			}
+			if seg.runes != nil {
+				str := runesToString(seg.runes)
+				t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.runes))
+			}
+			if seg.matcher != nil {
+				t.Errorf("Glob.segments[%d].matcher: expected nil, got %T", index, seg.matcher)
+			}
 		}
 	}
 }

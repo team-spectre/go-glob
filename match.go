@@ -5,10 +5,10 @@ import (
 )
 
 type Matcher struct {
-	g      *Glob
-	runes  []rune
 	memo   memoMap
-	ri, rj uint
+	runes  []rune
+	g      *Glob
+	c      Capture
 	rk, rn uint
 	sk, sn uint
 	ok     bool
@@ -42,8 +42,6 @@ func (g *Glob) RunesMatcher(input []rune) *Matcher {
 		g:     g,
 		runes: input,
 		memo:  make(memoMap),
-		ri:    uintMax,
-		rj:    uintMax,
 		rk:    0,
 		rn:    rn,
 		sk:    0,
@@ -57,9 +55,10 @@ func (m *Matcher) HasNext() bool {
 		return false
 	}
 
+	// Clear previous capture
+	m.c = Capture{}
+
 	if m.sk >= m.sn {
-		m.ri = m.rk
-		m.rj = m.rn
 		m.ok = m.ok && (m.rk >= m.rn)
 		return false
 	}
@@ -70,8 +69,6 @@ func (m *Matcher) HasNext() bool {
 
 	remain := m.rn - m.rk
 	if remain < seg.minLength || remain > seg.maxLength {
-		m.ri = uintMax
-		m.rj = uintMax
 		m.ok = false
 		return false
 	}
@@ -79,14 +76,18 @@ func (m *Matcher) HasNext() bool {
 	memo := m.memo[key]
 	if memo != nil {
 		if memo.rejected {
-			m.ri = uintMax
-			m.rj = uintMax
 			m.ok = false
 			return false
 		}
 		if memo.checked {
-			m.ri = m.rk
-			m.rj = memo.index
+			m.c = Capture{
+				m:  m,
+				qi: 0,  // FIXME
+				qj: 0,  // FIXME
+				ri: m.rk,
+				rj: memo.index,
+				si: m.sk - 1,
+			}
 			m.rk = memo.index
 			return true
 		}
@@ -101,60 +102,82 @@ func (m *Matcher) HasNext() bool {
 	memo.index = index
 	if !ok {
 		memo.rejected = true
-		m.ri = uintMax
-		m.rj = uintMax
 		m.ok = false
 		return false
 	}
-	m.ri = m.rk
-	m.rj = index
+	m.c = Capture{
+		m:  m,
+		qi: 0,  // FIXME
+		qj: 0,  // FIXME
+		ri: m.rk,
+		rj: index,
+		si: m.sk - 1,
+	}
 	m.rk = index
 	return true
 }
 
-func (m *Matcher) Start() int {
-	if m == nil || m.ri == uintMax {
-		panic(fmt.Errorf("call to Start() after HasNext() returned false"))
+func (m *Matcher) Capture() *Capture {
+	if m == nil || m.c.m == nil {
+		return nil
 	}
-	return int(m.ri)
-}
-
-func (m *Matcher) End() int {
-	if m == nil || m.ri == uintMax {
-		panic(fmt.Errorf("call to End() after HasNext() returned false"))
-	}
-	return int(m.rj)
-}
-
-func (m *Matcher) Location() (int, int) {
-	if m == nil || m.ri == uintMax {
-		panic(fmt.Errorf("call to Location() after HasNext() returned false"))
-	}
-	return int(m.ri), int(m.rj)
-}
-
-func (m *Matcher) Runes() []rune {
-	if m == nil || m.ri == uintMax {
-		panic(fmt.Errorf("call to Runes() after HasNext() returned false"))
-	}
-	return m.runes[m.ri:m.rj]
-}
-
-func (m *Matcher) Text() string {
-	return string(m.Runes())
+	return &m.c
 }
 
 func (m *Matcher) OK() bool {
-	if m == nil {
-		return false
+	if m != nil && m.ok {
+		return true
 	}
-	return m.ok
+	return false
 }
 
 func (m *Matcher) Matches() bool {
 	for m.HasNext() {
 	}
 	return m.OK()
+}
+
+type Capture struct {
+	m *Matcher
+	qi, qj uint
+	ri, rj uint
+	si uint
+}
+
+func (c *Capture) Pattern() (uint, uint) {
+	return c.qi, c.qj
+}
+
+func (c *Capture) PatternStart() uint {
+	return c.qi
+}
+
+func (c *Capture) PatternEnd() uint {
+	return c.qj
+}
+
+func (c *Capture) PatternRunes() []rune {
+	return c.m.g.runes[c.qi:c.qj]
+}
+
+func (c *Capture) Input() (uint, uint) {
+	return c.ri, c.rj
+}
+
+func (c *Capture) InputStart() uint {
+	return c.ri
+}
+
+func (c *Capture) InputEnd() uint {
+	return c.rj
+}
+
+func (c *Capture) InputRunes() []rune {
+	return c.m.runes[c.ri:c.rj]
+}
+
+func (c *Capture) InputString() string {
+	return runesToString(c.InputRunes())
 }
 
 func (m *Matcher) shallowClone() *Matcher {

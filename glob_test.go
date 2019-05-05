@@ -17,7 +17,7 @@ func TestGlob_Match(t *testing.T) {
 		{
 			Name:           "Nil",
 			G:              nil,
-			ExpectString:   emptyPattern,
+			ExpectString:   emptyString,
 			ExpectGoString: emptyGoString,
 			ExpectAccept:   []string{""},
 			ExpectReject:   []string{"a"},
@@ -25,12 +25,12 @@ func TestGlob_Match(t *testing.T) {
 		{
 			Name: "Empty",
 			G: &Glob{
-				pattern:   emptyPattern,
+				runes:     emptyRunes,
 				segments:  nil,
 				minLength: 0,
 				maxLength: 0,
 			},
-			ExpectString:   emptyPattern,
+			ExpectString:   emptyString,
 			ExpectGoString: emptyGoString,
 			ExpectAccept:   []string{""},
 			ExpectReject:   []string{"a"},
@@ -38,7 +38,7 @@ func TestGlob_Match(t *testing.T) {
 		{
 			Name: "Simple",
 			G: &Glob{
-				pattern: simplePattern,
+				runes: simpleRunes,
 				segments: []segment{
 					{
 						stype:     literalSegment,
@@ -73,7 +73,7 @@ func TestGlob_Match(t *testing.T) {
 				minLength: 12,
 				maxLength: 12,
 			},
-			ExpectString:   simplePattern,
+			ExpectString:   simpleString,
 			ExpectGoString: simpleGoString,
 			ExpectAccept: []string{
 				"foo/bar/00-x",
@@ -90,7 +90,7 @@ func TestGlob_Match(t *testing.T) {
 		{
 			Name: "Complex",
 			G: &Glob{
-				pattern: complexPattern,
+				runes: complexRunes,
 				segments: []segment{
 					{
 						stype:     literalSegment,
@@ -142,7 +142,7 @@ func TestGlob_Match(t *testing.T) {
 				minLength: 13,
 				maxLength: uintMax,
 			},
-			ExpectString:   complexPattern,
+			ExpectString:   complexString,
 			ExpectGoString: complexGoString,
 			ExpectAccept: []string{
 				"foo/bar/baz/00-x.c",
