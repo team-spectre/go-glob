@@ -118,6 +118,10 @@ func (p *parser) processEscape(ch rune, ifOct, ifHex, ifPunct parseState, emit f
 		fallthrough
 	case '?':
 		fallthrough
+	case '{':
+		fallthrough
+	case '}':
+		fallthrough
 	case '[':
 		fallthrough
 	case ']':
@@ -382,6 +386,7 @@ func (p *parser) run() {
 		if !p.wantSet {
 			p.fail("unterminated character set")
 		}
+		p.flushSet()
 
 	default:
 		p.fail("unterminated backslash escape")

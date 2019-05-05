@@ -18,10 +18,12 @@ const (
 )
 
 const (
-	digitDense0 = 0x03ff000000000000
-	digitDense1 = 0x0000000000000000
-	chDense0    = 0x0000000000000000
-	chDense1    = 0x0000010800000000
+	digitDense0        = 0x03ff000000000000
+	digitDense1        = 0x0000000000000000
+	alphanumericDense0 = 0x03ff000000000000
+	alphanumericDense1 = 0x07fffffe07fffffe
+	chDense0           = 0x0000000000000000
+	chDense1           = 0x0000010800000000
 )
 
 var (
@@ -32,24 +34,37 @@ var (
 
 var (
 	digitRange = runeMatchRange{'0', '9'}
+	upperRange = runeMatchRange{'A', 'Z'}
+	lowerRange = runeMatchRange{'a', 'z'}
 	cRange     = runeMatchRange{'c', 'c'}
 	hRange     = runeMatchRange{'h', 'h'}
+)
+
+var (
+	digitRanges        = []runeMatchRange{digitRange}
+	alphanumericRanges = []runeMatchRange{digitRange, upperRange, lowerRange}
+	chRanges           = []runeMatchRange{cRange, hRange}
 )
 
 var (
 	digitSet = runeMatchSet{
 		Dense0: digitDense0,
 		Dense1: digitDense1,
-		Ranges: []runeMatchRange{digitRange},
+		Ranges: digitRanges,
+	}
+	alphanumericSet = runeMatchSet{
+		Dense0: alphanumericDense0,
+		Dense1: alphanumericDense1,
+		Ranges: alphanumericRanges,
 	}
 	chSet = runeMatchSet{
 		Dense0: chDense0,
 		Dense1: chDense1,
-		Ranges: []runeMatchRange{cRange, hRange},
+		Ranges: chRanges,
 	}
 )
 
-func TestGlob_Compile(t *testing.T) {
+func TestCompile(t *testing.T) {
 	type testrow struct {
 		Name              string
 		Pattern           string
@@ -118,7 +133,7 @@ func TestGlob_Compile(t *testing.T) {
 	}
 }
 
-func TestGlob_Compile_Failure(t *testing.T) {
+func TestCompile_Failure(t *testing.T) {
 	type testrow struct {
 		Name        string
 		Pattern     string
@@ -237,8 +252,82 @@ func TestGlob_Compile_Failure(t *testing.T) {
 	}
 }
 
-func TestGlob_MustCompile(t *testing.T) {
+func TestCompileRuneMatcher(t *testing.T) {
+	type testrow struct {
+		Name    string
+		Pattern string
+		Expect  interface{}
+	}
+	testdata := []testrow{
+		{
+			Name:    "Empty",
+			Pattern: "",
+			Expect:  &runeMatchNotAny{},
+		},
+		{
+			Name:    "Caret",
+			Pattern: "^",
+			Expect:  &runeMatchAny{},
+		},
+		{
+			Name:    "JustA",
+			Pattern: "A",
+			Expect:  &runeMatchIs{Rune: 'A'},
+		},
+		{
+			Name:    "NotA",
+			Pattern: "^A",
+			Expect:  &runeMatchNotIs{Rune: 'A'},
+		},
+		{
+			Name:    "AZ",
+			Pattern: "A-Z",
+			Expect:  &upperRange,
+		},
+		{
+			Name:    "NotAZ",
+			Pattern: "^A-Z",
+			Expect:  &runeMatchNotRange{Lo: 'A', Hi: 'Z'},
+		},
+		{
+			Name:    "Alphanumeric",
+			Pattern: "0-9A-Za-z",
+			Expect:  &alphanumericSet,
+		},
+		{
+			Name:    "NotAlphanumeric",
+			Pattern: "^0-9A-Za-z",
+			Expect: &runeMatchNotSet{
+				Dense0: alphanumericDense0,
+				Dense1: alphanumericDense1,
+				Ranges: alphanumericRanges,
+			},
+		},
+	}
+	for _, row := range testdata {
+		t.Run(row.Name, func(t *testing.T) {
+			m, err := CompileRuneMatcher(row.Pattern)
+			if err != nil {
+				t.Errorf("expected success, got %v", err)
+				return
+			}
+			if m == nil {
+				t.Error("expected non-nil, got nil")
+				return
+			}
+			if !reflect.DeepEqual(m, row.Expect) {
+				t.Errorf("expected %#v, got %#v", row.Expect, m)
+			}
+		})
+	}
+}
+
+func TestMustCompile(t *testing.T) {
 	_ = MustCompile(emptyString)
+}
+
+func TestMustCompileRuneMatcher(t *testing.T) {
+	_ = MustCompileRuneMatcher("")
 }
 
 func expectLiteralSegment(index uint, expect string) globCompileExpectation {
