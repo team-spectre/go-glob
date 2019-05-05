@@ -87,6 +87,7 @@ func (p *parser) flushSet() {
 }
 
 func (p *parser) processEscape(ch rune, ifOct, ifHex, ifPunct parseState, emit func(rune)) {
+	// NB: keep in sync with util.go isPunct
 	switch ch {
 	case 'o':
 		p.state = ifOct
@@ -344,8 +345,13 @@ func (p *parser) run() {
 				return
 
 			case ']':
-				p.fail("unexpected ']' as part of range")
-				return
+				if p.wantSet {
+					p.fail("unexpected ']'")
+					return
+				}
+				p.emitSetLo('-')
+				p.flushSet()
+				p.state = rootState
 
 			case '\\':
 				p.state = charsetTailEscState
@@ -381,15 +387,23 @@ func (p *parser) run() {
 	case charsetHeadState:
 		fallthrough
 	case charsetMidState:
-		fallthrough
+		if !p.wantSet {
+			p.fail("unterminated character set")
+			return
+		}
+		p.flushSet()
+
 	case charsetTailState:
 		if !p.wantSet {
 			p.fail("unterminated character set")
+			return
 		}
+		p.emitSetLo('-')
 		p.flushSet()
 
 	default:
 		p.fail("unterminated backslash escape")
+		return
 	}
 
 	min := uint(0)

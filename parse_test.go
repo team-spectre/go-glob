@@ -303,6 +303,18 @@ func TestCompileRuneMatcher(t *testing.T) {
 				Ranges: alphanumericRanges,
 			},
 		},
+		{
+			Name:    "ADash",
+			Pattern: "a-",
+			Expect: &runeMatchSet{
+				Dense0: 0x0000200000000000,
+				Dense1: 0x0000000200000000,
+				Ranges: []runeMatchRange{
+					{'-', '-'},
+					{'a', 'a'},
+				},
+			},
+		},
 	}
 	for _, row := range testdata {
 		t.Run(row.Name, func(t *testing.T) {
@@ -317,6 +329,41 @@ func TestCompileRuneMatcher(t *testing.T) {
 			}
 			if !reflect.DeepEqual(m, row.Expect) {
 				t.Errorf("expected %#v, got %#v", row.Expect, m)
+			}
+		})
+	}
+}
+
+func TestCompileRuneMatcher_Failure(t *testing.T) {
+	type testrow struct {
+		Name        string
+		Pattern     string
+		ErrorString string
+	}
+	testdata := []testrow{
+		{
+			Name:        "UnexpectedOpenBracket",
+			Pattern:     "[",
+			ErrorString: "failed to parse character set: \"[\": unexpected '['",
+		},
+		{
+			Name:        "UnexpectedCloseBracket",
+			Pattern:     "]",
+			ErrorString: "failed to parse character set: \"]\": unexpected ']'",
+		},
+	}
+	for _, row := range testdata {
+		t.Run(row.Name, func(t *testing.T) {
+			m, err := CompileRuneMatcher(row.Pattern)
+			if err == nil {
+				t.Errorf("unexpected success: %#v", m)
+				return
+			}
+			if m != nil {
+				t.Errorf("unexpected value: %#v", m)
+			}
+			if actual := err.Error(); actual != row.ErrorString {
+				t.Errorf("unexpected error:\n\texpect: %q\n\tactual: %q", row.ErrorString, actual)
 			}
 		})
 	}

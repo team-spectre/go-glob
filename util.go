@@ -1,7 +1,6 @@
 package glob
 
 import (
-	"bytes"
 	"fmt"
 	"unicode"
 
@@ -25,25 +24,39 @@ func isHex(ch rune) bool {
 	return false
 }
 
-func isSafe(ch rune) bool {
+func isPunct(ch rune) bool {
+	// NB: keep in sync with parse.go processEscape
 	switch ch {
 	case '\\':
-		return false
+		fallthrough
+	case '*':
+		fallthrough
+	case '?':
+		fallthrough
+	case '{':
+		fallthrough
+	case '}':
+		fallthrough
 	case '[':
-		return false
+		fallthrough
 	case ']':
-		return false
-	case '-':
-		return false
+		fallthrough
 	case '^':
-		return false
+		fallthrough
+	case '-':
+		return true
 	}
-	return unicode.IsGraphic(ch)
+	return false
 }
 
 func safeAppendRune(runes []rune, ch rune) []rune {
-	if isSafe(ch) {
+	if isPunct(ch) {
+		str := fmt.Sprintf("\\%c", ch)
+		return append(runes, []rune(str)...)
+	} else if unicode.IsGraphic(ch) {
 		return append(runes, ch)
+	} else if ch == 0x00 {
+		return append(runes, '\\', '0')
 	} else if ch < 0x80 {
 		str := fmt.Sprintf("\\x%02x", ch)
 		return append(runes, []rune(str)...)
@@ -54,10 +67,6 @@ func safeAppendRune(runes []rune, ch rune) []rune {
 		str := fmt.Sprintf("\\U%08x", ch)
 		return append(runes, []rune(str)...)
 	}
-}
-
-func safePrintRune(buf *bytes.Buffer, ch rune) {
-	buf.Write(runesToBytes(safeAppendRune(nil, ch)))
 }
 
 func denseBit(ch rune) uint64 {
