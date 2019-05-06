@@ -5,20 +5,33 @@ import (
 )
 
 type Matcher struct {
-	memo   memoMap
-	runes  []rune
-	g      *Glob
-	c      Capture
-	rk, rn uint
-	sk, sn uint
-	ok     bool
+	memo        memoMap
+	inputString string
+	inputRunes  []rune
+	inputIndex  []uint
+	g           *Glob
+	c           Capture
+	inputI      uint
+	inputJ      uint
+	segmentI    uint
+	segmentJ    uint
+	ok          bool
+}
+
+type Capture struct {
+	m        *Matcher
+	inputP   uint
+	inputQ   uint
+	segmentP uint
+	patternP uint
+	patternQ uint
 }
 
 type indexSet map[uint]bool
 
 type memoMap map[memoKey]*memoValue
 
-type memoKey struct{ rk, sk uint }
+type memoKey struct{ inputI, segmentI uint }
 
 type memoValue struct {
 	checked  bool
@@ -26,53 +39,85 @@ type memoValue struct {
 	index    uint
 }
 
-func (g *Glob) RunesMatcher(input []rune) *Matcher {
-	var rn, sn, minLength, maxLength uint
-	rn = uint(len(input))
+func (g *Glob) Matcher(input string) *Matcher {
+	inputString, inputRunes, inputIndex := normString(input)
+
+	// Grab some data about the glob, taking into account that (*Glob)(nil)
+	// is a valid glob that matches the empty string and nothing else.
+	var inputJ, segmentJ, minLength, maxLength uint
+	inputJ = uint(len(inputRunes))
 	if g != nil {
-		sn = uint(len(g.segments))
+		segmentJ = uint(len(g.segments))
 		minLength = g.minLength
 		maxLength = g.maxLength
 	}
-	if rn < minLength || rn > maxLength {
-		// fast reject if length of input is so (short/long) that it will never match
+
+	// Fast reject the input is too short or too long to ever match;
+	// (*Matcher)(nil) is a valid matcher that will never match any string.
+	if inputJ < minLength || inputJ > maxLength {
 		return nil
 	}
+
+	// Construct and return a matcher for this glob and input.
 	return &Matcher{
-		g:     g,
-		runes: input,
-		memo:  make(memoMap),
-		rk:    0,
-		rn:    rn,
-		sk:    0,
-		sn:    sn,
-		ok:    true,
+		memo:        make(memoMap),
+		inputString: inputString,
+		inputRunes:  inputRunes,
+		inputIndex:  inputIndex,
+		g:           g,
+		inputI:      0,
+		inputJ:      inputJ,
+		segmentI:    0,
+		segmentJ:    segmentJ,
+		ok:          true,
 	}
 }
 
+func (m *Matcher) Input() string {
+	if m == nil {
+		return ""
+	}
+	return m.inputString
+}
+
+func (m *Matcher) InputSubstring(i, j uint) string {
+	if m == nil {
+		return ""
+	}
+	bi := m.inputIndex[i]
+	bj := m.inputIndex[j]
+	return m.inputString[bi:bj]
+}
+
 func (m *Matcher) HasNext() bool {
+	// (*Matcher)(nil) never has more data.
 	if m == nil {
 		return false
 	}
 
-	// Clear previous capture
+	// Clear previous capture.
 	m.c = Capture{}
 
-	if m.sk >= m.sn {
-		m.ok = m.ok && (m.rk >= m.rn)
+	// No more segments? Success iff all input was consumed.
+	if m.segmentI >= m.segmentJ {
+		m.ok = m.ok && (m.inputI >= m.inputJ)
 		return false
 	}
 
-	key := memoKey{m.rk, m.sk}
-	seg := m.g.segments[m.sk]
-	m.sk++
+	// Grab next segment, and prepare memoization key while we're here.
+	key := memoKey{inputI: m.inputI, segmentI: m.segmentI}
+	seg := m.g.segments[m.segmentI]
+	m.segmentI++
+	moreSegments := (m.segmentI < m.segmentJ)
 
-	remain := m.rn - m.rk
+	// Fast reject if the remaining input is too short or too long to ever match.
+	remain := m.inputJ - m.inputI
 	if remain < seg.minLength || remain > seg.maxLength {
 		m.ok = false
 		return false
 	}
 
+	// Check for memoized results.
 	memo := m.memo[key]
 	if memo != nil {
 		if memo.rejected {
@@ -81,22 +126,23 @@ func (m *Matcher) HasNext() bool {
 		}
 		if memo.checked {
 			m.c = Capture{
-				m:  m,
-				qi: 0,  // FIXME
-				qj: 0,  // FIXME
-				ri: m.rk,
-				rj: memo.index,
-				si: m.sk - 1,
+				m:        m,
+				inputP:   key.inputI,
+				inputQ:   memo.index,
+				segmentP: key.segmentI,
+				patternP: seg.patternP,
+				patternQ: seg.patternQ,
 			}
-			m.rk = memo.index
+			m.inputI = memo.index
 			return true
 		}
 		panic(fmt.Errorf("BUG! infinite recursion"))
 	}
 
+	// Match some input, then memoize the outcome.
 	memo = &memoValue{index: uintMax}
 	m.memo[key] = memo
-	index, ok := m.tick(seg, m.sk < m.sn)
+	index, ok := m.tick(seg, moreSegments)
 	memo.checked = true
 	memo.rejected = false
 	memo.index = index
@@ -106,18 +152,19 @@ func (m *Matcher) HasNext() bool {
 		return false
 	}
 	m.c = Capture{
-		m:  m,
-		qi: 0,  // FIXME
-		qj: 0,  // FIXME
-		ri: m.rk,
-		rj: index,
-		si: m.sk - 1,
+		m:        m,
+		inputP:   key.inputI,
+		inputQ:   index,
+		segmentP: key.segmentI,
+		patternP: seg.patternP,
+		patternQ: seg.patternQ,
 	}
-	m.rk = index
+	m.inputI = index
 	return true
 }
 
 func (m *Matcher) Capture() *Capture {
+	// (*Matcher)(nil) never has captures.
 	if m == nil || m.c.m == nil {
 		return nil
 	}
@@ -125,10 +172,11 @@ func (m *Matcher) Capture() *Capture {
 }
 
 func (m *Matcher) OK() bool {
-	if m != nil && m.ok {
-		return true
+	// (*Matcher)(nil) is never okay.
+	if m == nil || !m.ok {
+		return false
 	}
-	return false
+	return true
 }
 
 func (m *Matcher) Matches() bool {
@@ -137,104 +185,88 @@ func (m *Matcher) Matches() bool {
 	return m.OK()
 }
 
-type Capture struct {
-	m *Matcher
-	qi, qj uint
-	ri, rj uint
-	si uint
-}
-
-func (c *Capture) Pattern() (uint, uint) {
-	return c.qi, c.qj
+func (c *Capture) PatternLocation() (uint, uint) {
+	return c.patternP, c.patternQ
 }
 
 func (c *Capture) PatternStart() uint {
-	return c.qi
+	return c.patternP
 }
 
 func (c *Capture) PatternEnd() uint {
-	return c.qj
+	return c.patternQ
 }
 
-func (c *Capture) PatternRunes() []rune {
-	return c.m.g.runes[c.qi:c.qj]
+func (c *Capture) Pattern() string {
+	return c.m.g.PatternSubstring(c.patternP, c.patternQ)
 }
 
-func (c *Capture) Input() (uint, uint) {
-	return c.ri, c.rj
+func (c *Capture) InputLocation() (uint, uint) {
+	return c.inputP, c.inputQ
 }
 
 func (c *Capture) InputStart() uint {
-	return c.ri
+	return c.inputP
 }
 
 func (c *Capture) InputEnd() uint {
-	return c.rj
+	return c.inputQ
 }
 
-func (c *Capture) InputRunes() []rune {
-	return c.m.runes[c.ri:c.rj]
+func (c *Capture) Input() string {
+	return c.m.InputSubstring(c.inputP, c.inputQ)
 }
 
-func (c *Capture) InputString() string {
-	return runesToString(c.InputRunes())
-}
-
-func (m *Matcher) shallowClone() *Matcher {
-	dupe := new(Matcher)
-	*dupe = *m
-	return dupe
-}
-
-func (m *Matcher) wouldAccept(rk uint) bool {
-	dupe := m.shallowClone()
-	dupe.rk = rk
+func (m *Matcher) wouldAccept(inputI uint) bool {
+	var dupe Matcher
+	dupe = *m
+	dupe.inputI = inputI
 	return dupe.Matches()
 }
 
 func (m *Matcher) tick(seg segment, moreSegments bool) (uint, bool) {
-	i := m.rk
-	j := i
-	n := m.rn
+	inputI := m.inputI
+	inputJ := inputI
+	inputL := m.inputJ
 
 	switch seg.stype {
 	case literalSegment:
-		j += uint(len(seg.runes))
-		if j > n {
+		inputJ += uint(len(seg.literalRunes))
+		if inputJ > inputL {
 			return 0, false
 		}
-		runes := m.runes[i:j]
-		if !equalRunes(seg.runes, runes) {
+		runes := m.inputRunes[inputI:inputJ]
+		if !equalRunes(seg.literalRunes, runes) {
 			return 0, false
 		}
-		return j, true
+		return inputJ, true
 
 	case runeMatchSegment:
-		j++
-		if j > n {
+		inputJ++
+		if inputJ > inputL {
 			return 0, false
 		}
-		ch := m.runes[i]
+		ch := m.inputRunes[inputI]
 		if !seg.matcher.MatchRune(ch) {
 			return 0, false
 		}
-		return j, true
+		return inputJ, true
 
 	case questionSegment:
-		j++
-		if j > n {
+		inputJ++
+		if inputJ > inputL {
 			return 0, false
 		}
-		ch := m.runes[i]
+		ch := m.inputRunes[inputI]
 		if ch == '/' {
 			return 0, false
 		}
-		return j, true
+		return inputJ, true
 
 	case starSegment:
 		// find the next '/'
-		for j < n && m.runes[j] != '/' {
-			j++
+		for inputJ < inputL && m.inputRunes[inputJ] != '/' {
+			inputJ++
 		}
 
 		// no segments after this?
@@ -242,60 +274,60 @@ func (m *Matcher) tick(seg segment, moreSegments bool) (uint, bool) {
 		// -> -> no '/': accept the rest of the string, no calculations needed
 		// -> -> yes '/': "accept" up to just before the slash, then reject on next tick
 		if !moreSegments {
-			return j, true
+			return inputJ, true
 		}
 
-		// accept string of any length ∈ [0..n] where n := (j - i), longer is better
-		ub := j
-		if m.wouldAccept(j) {
-			return j, true
+		// accept string where (length ∈ [0..n]) given n := (inputJ - inputI), longer is better
+		inputUB := inputJ
+		if m.wouldAccept(inputJ) {
+			return inputJ, true
 		}
-		for j > i {
-			j--
-			if m.wouldAccept(j) {
-				return j, true
+		for inputJ > inputI {
+			inputJ--
+			if m.wouldAccept(inputJ) {
+				return inputJ, true
 			}
 		}
 
 		// did not find any length which would lead to a match
 		// -> blindly accept the maximum permissible length, then reject on some future tick
-		return ub, true
+		return inputUB, true
 
 	case doubleStarSegment:
-		j = n
+		inputJ = inputL
 
 		// accept empty string
-		if i >= j {
-			return j, true
+		if inputI >= inputJ {
+			return inputJ, true
 		}
 
 		// no segments after this?
 		// -> accept rest of string, no further calculations needed
 		if !moreSegments {
-			return j, true
+			return inputJ, true
 		}
 
-		// accept string of any length ∈ [0..n] where n := (j - i), longer is better
-		if m.wouldAccept(j) {
-			return j, true
+		// accept string where (length ∈ [0..n]) given n := (inputJ - inputI), longer is better
+		if m.wouldAccept(inputJ) {
+			return inputJ, true
 		}
-		for j > i {
-			j--
-			if m.wouldAccept(j) {
-				return j, true
+		for inputJ > inputI {
+			inputJ--
+			if m.wouldAccept(inputJ) {
+				return inputJ, true
 			}
 		}
-		return j, true
+		return inputJ, true
 
 	case doubleStarSlashSegment:
 		// find the last '/'
-		slashes := make(indexSet, n-i)
-		j = i
-		slashes[j] = true
-		for k := i; k < n; k++ {
-			if m.runes[k] == '/' {
-				j = k + 1
-				slashes[j] = true
+		slashes := make(indexSet, inputL-inputI)
+		inputJ = inputI
+		slashes[inputJ] = true
+		for inputK := inputI; inputK < inputL; inputK++ {
+			if m.inputRunes[inputK] == '/' {
+				inputJ = inputK + 1
+				slashes[inputJ] = true
 			}
 		}
 
@@ -304,24 +336,24 @@ func (m *Matcher) tick(seg segment, moreSegments bool) (uint, bool) {
 		// -> -> is '/': accept the rest of the string, no calculations needed
 		// -> -> not '/': "accept" the longest permissible string, then reject on next tick
 		if !moreSegments {
-			return j, true
+			return inputJ, true
 		}
 
-		// accept string [(length ∈ [0..n]) ∧ (j ∈ slashes)] where n := (j - i), longer is better
-		ub := j
-		if slashes[j] && m.wouldAccept(j) {
-			return j, true
+		// accept string where [(length ∈ [0..n]) ∧ (inputJ ∈ slashes)] given n := (inputJ - inputI), longer is better
+		inputUB := inputJ
+		if slashes[inputJ] && m.wouldAccept(inputJ) {
+			return inputJ, true
 		}
-		for j > i {
-			j--
-			if slashes[j] && m.wouldAccept(j) {
-				return j, true
+		for inputJ > inputI {
+			inputJ--
+			if slashes[inputJ] && m.wouldAccept(inputJ) {
+				return inputJ, true
 			}
 		}
 
 		// did not find any length which would lead to a match
 		// -> blindly accept the maximum permissible length, then reject on some future tick
-		return ub, true
+		return inputUB, true
 
 	default:
 		panic(fmt.Errorf("BUG! unknown segmentType %#v", seg.stype))

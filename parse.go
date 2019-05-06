@@ -6,22 +6,34 @@ import (
 )
 
 type parser struct {
-	runes            []rune
+	inputString      string
+	inputRunes       []rune
+	inputIndex       []uint
 	segments         []segment
 	ranges           []runeMatchRange
 	partialLiteral   []rune
 	partialEscape    []rune
+	lastSegment      *segment
 	err              error
-	text             string
-	i, j             uint
+	inputP           uint
+	inputQ           uint
+	inputI           uint
+	inputJ           uint
 	minLength        uint
 	maxLength        uint
 	escapeIntroducer rune
 	state            parseState
-	lastSegmentType  segmentType
 	escapeLen        byte
 	negate           bool
 	wantSet          bool
+}
+
+func (p *parser) setInput(str string) {
+	p.inputString, p.inputRunes, p.inputIndex = normString(str)
+	p.inputP = 0
+	p.inputQ = 0
+	p.inputI = 0
+	p.inputJ = uint(len(p.inputRunes))
 }
 
 func (p *parser) makeError(format string, args ...interface{}) error {
@@ -34,19 +46,29 @@ func (p *parser) fail(format string, args ...interface{}) {
 	}
 }
 
-func (p *parser) emitSegment(t segmentType, r []rune, m RuneMatcher) {
-	p.segments = append(p.segments, segment{stype: t, runes: r, matcher: m})
-	p.lastSegmentType = t
+func (p *parser) emitSegment(t segmentType, patternP, patternQ uint) {
+	n := uint(len(p.segments))
+	p.segments = append(p.segments, segment{
+		stype:    t,
+		patternP: patternP,
+		patternQ: patternQ,
+	})
+	p.lastSegment = &p.segments[n]
 }
 
 func (p *parser) emitLiteral(ch rune) {
 	if p.partialLiteral == nil {
-		p.partialLiteral = takeRuneSlice()
+		p.inputP = p.inputQ
+		p.partialLiteral = takeRuneSlice(0)
 	}
 	p.partialLiteral = append(p.partialLiteral, ch)
 }
 
 func (p *parser) emitSetLo(ch rune) {
+	if p.ranges == nil {
+		p.inputP = p.inputQ
+		p.ranges = make([]runeMatchRange, 0, 8)
+	}
 	p.ranges = append(p.ranges, runeMatchRange{Lo: ch, Hi: ch})
 }
 
@@ -60,20 +82,17 @@ func (p *parser) emitSetHi(ch rune) {
 	}
 }
 
-func (p *parser) upgradeSegment(t segmentType) {
-	index := uint(len(p.segments)) - 1
-	p.segments[index].stype = t
-	p.lastSegmentType = t
-}
-
 func (p *parser) flushLiteral() {
 	if p.partialLiteral == nil {
 		return
 	}
-	runes := copyRunes(p.partialLiteral)
+
+	str := string(p.partialLiteral)
 	giveRuneSlice(p.partialLiteral)
 	p.partialLiteral = nil
-	p.emitSegment(literalSegment, runes, nil)
+
+	p.emitSegment(literalSegment, p.inputP, p.inputQ)
+	p.lastSegment.setLiteral(str)
 }
 
 func (p *parser) flushSet() {
@@ -83,7 +102,9 @@ func (p *parser) flushSet() {
 	}
 	p.ranges = nil
 	p.negate = false
-	p.emitSegment(runeMatchSegment, nil, set)
+
+	p.emitSegment(runeMatchSegment, p.inputP, p.inputQ)
+	p.lastSegment.matcher = set
 }
 
 func (p *parser) processEscape(ch rune, ifOct, ifHex, ifPunct parseState, emit func(rune)) {
@@ -93,25 +114,25 @@ func (p *parser) processEscape(ch rune, ifOct, ifHex, ifPunct parseState, emit f
 		p.state = ifOct
 		p.escapeIntroducer = ch
 		p.escapeLen = 3
-		p.partialEscape = takeRuneSlice()
+		p.partialEscape = takeRuneSlice(0)
 
 	case 'x':
 		p.state = ifHex
 		p.escapeIntroducer = ch
 		p.escapeLen = 2
-		p.partialEscape = takeRuneSlice()
+		p.partialEscape = takeRuneSlice(0)
 
 	case 'u':
 		p.state = ifHex
 		p.escapeIntroducer = ch
 		p.escapeLen = 4
-		p.partialEscape = takeRuneSlice()
+		p.partialEscape = takeRuneSlice(0)
 
 	case 'U':
 		p.state = ifHex
 		p.escapeIntroducer = ch
 		p.escapeLen = 8
-		p.partialEscape = takeRuneSlice()
+		p.partialEscape = takeRuneSlice(0)
 
 	case '\\':
 		fallthrough
@@ -195,9 +216,10 @@ func (p *parser) processHex(ch rune, ifDone parseState, emit func(rune)) {
 }
 
 func (p *parser) run() {
-	for p.i < p.j {
-		ch := p.runes[p.i]
-		p.i++
+	for p.inputI < p.inputJ {
+		p.inputQ = p.inputI
+		ch := p.inputRunes[p.inputI]
+		p.inputI++
 
 		switch p.state {
 		case rootState:
@@ -220,26 +242,26 @@ func (p *parser) run() {
 
 			case '*':
 				p.flushLiteral()
-				if p.lastSegmentType == doubleStarSegment {
+				if p.lastSegment != nil && p.lastSegment.stype == doubleStarSegment {
 					p.fail("unexpected '***'")
 					return
 				}
-				if p.lastSegmentType == starSegment {
-					p.upgradeSegment(doubleStarSegment)
+				if p.lastSegment != nil && p.lastSegment.stype == starSegment {
+					p.lastSegment.stype = doubleStarSegment
 					continue
 				}
-				p.emitSegment(starSegment, nil, nil)
+				p.emitSegment(starSegment, p.inputQ, p.inputI)
 
 			case '?':
 				p.flushLiteral()
-				p.emitSegment(questionSegment, nil, nil)
+				p.emitSegment(questionSegment, p.inputQ, p.inputI)
 
 			case '\\':
 				p.state = rootEscState
 
 			case '/':
-				if p.lastSegmentType == doubleStarSegment {
-					p.upgradeSegment(doubleStarSlashSegment)
+				if p.lastSegment != nil && p.lastSegment.stype == doubleStarSegment {
+					p.lastSegment.stype = doubleStarSlashSegment
 					continue
 				}
 				fallthrough
@@ -375,6 +397,7 @@ func (p *parser) run() {
 		return
 	}
 
+	p.inputQ = p.inputJ
 	switch p.state {
 	case rootState:
 		if p.wantSet {
@@ -408,17 +431,17 @@ func (p *parser) run() {
 
 	min := uint(0)
 	max := uint(0)
-	si := uint(0)
-	sj := uint(len(p.segments))
-	for sj > si {
-		sj--
-		seg := &p.segments[sj]
+	segmentI := uint(0)
+	segmentJ := uint(len(p.segments))
+	for segmentJ > segmentI {
+		segmentJ--
+		seg := &p.segments[segmentJ]
 
 		var segMin, segMax uint
 		switch seg.stype {
 		case literalSegment:
-			segMin = uint(len(seg.runes))
-			segMax = uint(len(seg.runes))
+			segMin = uint(len(seg.literalRunes))
+			segMax = uint(len(seg.literalRunes))
 
 		case runeMatchSegment:
 			fallthrough

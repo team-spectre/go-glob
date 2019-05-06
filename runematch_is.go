@@ -17,7 +17,7 @@ func (m *runeMatchIs) MatchRune(ch rune) bool {
 func (m *runeMatchIs) String() string {
 	buf := make([]rune, 0, 10)
 	buf = safeAppendRune(buf, m.Rune)
-	return runesToString(buf)
+	return string(buf)
 }
 
 func (m *runeMatchIs) GoString() string {

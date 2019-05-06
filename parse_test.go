@@ -385,7 +385,7 @@ func expectLiteralSegment(index uint, expect string) globCompileExpectation {
 				t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, literalSegment, seg.stype)
 				return
 			}
-			actual := runesToString(seg.runes)
+			actual := seg.literalString
 			if actual != expect {
 				t.Errorf("Glob.segments[%d].runes: expected %q, got %q", index, expect, actual)
 			}
@@ -404,9 +404,9 @@ func expectRuneMatchSegment(index uint, prototype RuneMatcher, expect interface{
 				t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, runeMatchSegment, seg.stype)
 				return
 			}
-			if seg.runes != nil {
-				str := runesToString(seg.runes)
-				t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.runes))
+			if seg.literalRunes != nil {
+				str := seg.literalString
+				t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.literalRunes))
 			}
 			if seg.matcher == nil {
 				t.Errorf("Glob.segments[%d].matcher: expected %T, got nil", index, prototype)
@@ -432,9 +432,9 @@ func expectSpecialSegment(index uint, expect segmentType) globCompileExpectation
 				t.Errorf("Glob.segments[%d].type: expected %#v, got %#v", index, expect, seg.stype)
 				return
 			}
-			if seg.runes != nil {
-				str := runesToString(seg.runes)
-				t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.runes))
+			if seg.literalRunes != nil {
+				str := seg.literalString
+				t.Errorf("Glob.segments[%d].runes: expected nil, got %q => len %d", index, str, len(seg.literalRunes))
 			}
 			if seg.matcher != nil {
 				t.Errorf("Glob.segments[%d].matcher: expected nil, got %T", index, seg.matcher)

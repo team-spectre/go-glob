@@ -5,6 +5,104 @@ import (
 )
 
 func TestGlob_Match(t *testing.T) {
+	emptyGlob := Glob{
+		segments:  nil,
+		minLength: 0,
+		maxLength: 0,
+	}
+	emptyGlob.setPattern(emptyString)
+
+	simpleGlob := Glob{
+		segments: []segment{
+			{
+				stype:     literalSegment,
+				minLength: 12,
+				maxLength: 12,
+			},
+			{
+				stype:     runeMatchSegment,
+				matcher:   &digitSet,
+				minLength: 4,
+				maxLength: 4,
+			},
+			{
+				stype:     runeMatchSegment,
+				matcher:   &digitSet,
+				minLength: 3,
+				maxLength: 3,
+			},
+			{
+				stype:     literalSegment,
+				minLength: 2,
+				maxLength: 2,
+			},
+			{
+				stype:     questionSegment,
+				minLength: 1,
+				maxLength: 1,
+			},
+		},
+		minLength: 12,
+		maxLength: 12,
+	}
+	simpleGlob.setPattern(simpleString)
+	simpleGlob.segments[0].setLiteral("foo/bar/")
+	simpleGlob.segments[3].setLiteral("-")
+
+	complexGlob := Glob{
+		segments: []segment{
+			{
+				stype:     literalSegment,
+				minLength: 13,
+				maxLength: uintMax,
+			},
+			{
+				stype:     doubleStarSlashSegment,
+				minLength: 5,
+				maxLength: uintMax,
+			},
+			{
+				stype:     runeMatchSegment,
+				matcher:   &digitSet,
+				minLength: 5,
+				maxLength: uintMax,
+			},
+			{
+				stype:     runeMatchSegment,
+				matcher:   &digitSet,
+				minLength: 4,
+				maxLength: uintMax,
+			},
+			{
+				stype:     literalSegment,
+				minLength: 3,
+				maxLength: uintMax,
+			},
+			{
+				stype:     starSegment,
+				minLength: 2,
+				maxLength: uintMax,
+			},
+			{
+				stype:     literalSegment,
+				minLength: 2,
+				maxLength: 2,
+			},
+			{
+				stype:     runeMatchSegment,
+				matcher:   &chSet,
+				minLength: 1,
+				maxLength: 1,
+			},
+		},
+		minLength: 13,
+		maxLength: uintMax,
+	}
+	complexGlob.setPattern(complexString)
+	complexGlob.segments[0].setLiteral("foo/bar/")
+	complexGlob.segments[4].setLiteral("-")
+	complexGlob.segments[6].setLiteral(".")
+
 	type testrow struct {
 		Name           string
 		G              *Glob
@@ -13,6 +111,7 @@ func TestGlob_Match(t *testing.T) {
 		ExpectAccept   []string
 		ExpectReject   []string
 	}
+
 	testdata := []testrow{
 		{
 			Name:           "Nil",
@@ -23,56 +122,16 @@ func TestGlob_Match(t *testing.T) {
 			ExpectReject:   []string{"a"},
 		},
 		{
-			Name: "Empty",
-			G: &Glob{
-				runes:     emptyRunes,
-				segments:  nil,
-				minLength: 0,
-				maxLength: 0,
-			},
+			Name:           "Empty",
+			G:              &emptyGlob,
 			ExpectString:   emptyString,
 			ExpectGoString: emptyGoString,
 			ExpectAccept:   []string{""},
 			ExpectReject:   []string{"a"},
 		},
 		{
-			Name: "Simple",
-			G: &Glob{
-				runes: simpleRunes,
-				segments: []segment{
-					{
-						stype:     literalSegment,
-						runes:     []rune("foo/bar/"),
-						minLength: 12,
-						maxLength: 12,
-					},
-					{
-						stype:     runeMatchSegment,
-						matcher:   &digitSet,
-						minLength: 4,
-						maxLength: 4,
-					},
-					{
-						stype:     runeMatchSegment,
-						matcher:   &digitSet,
-						minLength: 3,
-						maxLength: 3,
-					},
-					{
-						stype:     literalSegment,
-						runes:     []rune("-"),
-						minLength: 2,
-						maxLength: 2,
-					},
-					{
-						stype:     questionSegment,
-						minLength: 1,
-						maxLength: 1,
-					},
-				},
-				minLength: 12,
-				maxLength: 12,
-			},
+			Name:           "Simple",
+			G:              &simpleGlob,
 			ExpectString:   simpleString,
 			ExpectGoString: simpleGoString,
 			ExpectAccept: []string{
@@ -88,60 +147,8 @@ func TestGlob_Match(t *testing.T) {
 			},
 		},
 		{
-			Name: "Complex",
-			G: &Glob{
-				runes: complexRunes,
-				segments: []segment{
-					{
-						stype:     literalSegment,
-						runes:     []rune("foo/bar/"),
-						minLength: 13,
-						maxLength: uintMax,
-					},
-					{
-						stype:     doubleStarSlashSegment,
-						minLength: 5,
-						maxLength: uintMax,
-					},
-					{
-						stype:     runeMatchSegment,
-						matcher:   &digitSet,
-						minLength: 5,
-						maxLength: uintMax,
-					},
-					{
-						stype:     runeMatchSegment,
-						matcher:   &digitSet,
-						minLength: 4,
-						maxLength: uintMax,
-					},
-					{
-						stype:     literalSegment,
-						runes:     []rune("-"),
-						minLength: 3,
-						maxLength: uintMax,
-					},
-					{
-						stype:     starSegment,
-						minLength: 2,
-						maxLength: uintMax,
-					},
-					{
-						stype:     literalSegment,
-						runes:     []rune("."),
-						minLength: 2,
-						maxLength: 2,
-					},
-					{
-						stype:     runeMatchSegment,
-						matcher:   &chSet,
-						minLength: 1,
-						maxLength: 1,
-					},
-				},
-				minLength: 13,
-				maxLength: uintMax,
-			},
+			Name:           "Complex",
+			G:              &complexGlob,
 			ExpectString:   complexString,
 			ExpectGoString: complexGoString,
 			ExpectAccept: []string{
@@ -161,6 +168,7 @@ func TestGlob_Match(t *testing.T) {
 			},
 		},
 	}
+
 	for _, row := range testdata {
 		t.Run(row.Name, func(t *testing.T) {
 			if row.G.String() != row.ExpectString {
@@ -170,12 +178,12 @@ func TestGlob_Match(t *testing.T) {
 				t.Errorf("GoString: expected %q, got %q", row.ExpectGoString, row.G.GoString())
 			}
 			for _, input := range row.ExpectReject {
-				if row.G.Match(input) {
+				if row.G.Matcher(input).Matches() {
 					t.Errorf("Match %q: unexpected acceptance", input)
 				}
 			}
 			for _, input := range row.ExpectAccept {
-				if !row.G.Match(input) {
+				if !row.G.Matcher(input).Matches() {
 					t.Errorf("Match %q: unexpected rejection", input)
 				}
 			}

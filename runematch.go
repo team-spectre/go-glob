@@ -7,9 +7,9 @@ import (
 type RuneMatcher interface {
 	MatchRune(rune) bool
 	ForEachRange(func(lo, hi rune))
+	Not() RuneMatcher
 	fmt.Stringer
 	fmt.GoStringer
-	Not() RuneMatcher
 }
 
 func MustCompileRuneMatcher(input string) RuneMatcher {
@@ -29,19 +29,16 @@ func CompileRuneMatcher(input string) (RuneMatcher, error) {
 	}
 
 	var p parser
-	p.runes = stringToRunes(input)
+	p.setInput(input)
 	p.segments = make([]segment, 0, 1)
 	p.ranges = make([]runeMatchRange, 0, 16)
-	p.text = input
-	p.i = 0
-	p.j = uint(len(p.runes))
 	p.state = charsetInitialState
 	p.wantSet = true
 
 	p.run()
 
 	if p.err != nil {
-		return nil, fmt.Errorf("failed to parse character set: %q: %v", input, p.err)
+		return nil, fmt.Errorf("failed to parse character set: %q: %v", p.inputString, p.err)
 	}
 	if len(p.segments) != 1 {
 		panic(fmt.Errorf("BUG! expected 1 runeMatchSegment, got %d segments", len(p.segments)))

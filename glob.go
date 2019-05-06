@@ -4,57 +4,50 @@ import (
 	"fmt"
 )
 
+// Glob represents a compiled glob pattern, ready to match path names.
 type Glob struct {
-	runes     []rune
-	segments  []segment
-	minLength uint
-	maxLength uint
+	patternString string
+	patternRunes  []rune
+	patternIndex  []uint
+	segments      []segment
+	minLength     uint
+	maxLength     uint
 }
 
 type segment struct {
-	stype     segmentType
-	runes     []rune
-	matcher   RuneMatcher
-	minLength uint
-	maxLength uint
+	stype         segmentType
+	literalString string
+	literalRunes  []rune
+	literalIndex  []uint
+	matcher       RuneMatcher
+	patternP      uint
+	patternQ      uint
+	minLength     uint
+	maxLength     uint
 }
 
-func (g *Glob) Matcher(input string) *Matcher {
-	return g.RunesMatcher(stringToRunes(input))
-}
-
-func (g *Glob) BytesMatcher(input []byte) *Matcher {
-	return g.RunesMatcher(bytesToRunes(input))
-}
-
-func (g *Glob) Match(input string) bool {
-	return g.Matcher(input).Matches()
-}
-
-func (g *Glob) ByteMatch(input []byte) bool {
-	return g.BytesMatcher(input).Matches()
-}
-
-func (g *Glob) RuneMatch(input []rune) bool {
-	return g.RunesMatcher(input).Matches()
-}
-
-func (g *Glob) Runes() []rune {
-	if g != nil && len(g.segments) > 0 {
-		return g.runes
+func (g *Glob) Pattern() string {
+	if g == nil || len(g.segments) <= 0 {
+		return ""
 	}
-	return nil
+	return g.patternString
+}
+
+func (g *Glob) PatternSubstring(i, j uint) string {
+	bi := g.patternIndex[i]
+	bj := g.patternIndex[j]
+	return g.patternString[bi:bj]
 }
 
 func (g *Glob) String() string {
-	return runesToString(g.Runes())
+	return g.Pattern()
 }
 
 func (g *Glob) GoString() string {
-	if g != nil && len(g.segments) > 0 {
-		return fmt.Sprintf("glob.MustCompile(%q)", runesToString(g.runes))
+	if g == nil || len(g.segments) <= 0 {
+		return "nil"
 	}
-	return "nil"
+	return fmt.Sprintf("glob.MustCompile(%q)", g.patternString)
 }
 
 var _ fmt.Stringer = (*Glob)(nil)
@@ -74,26 +67,32 @@ func Compile(input string) (*Glob, error) {
 	}
 
 	var p parser
-	p.runes = stringToRunes(input)
+	p.setInput(input)
 	p.segments = make([]segment, 0, 16)
-	p.text = input
-	p.i = 0
-	p.j = uint(len(p.runes))
 	p.state = rootState
-	p.lastSegmentType = literalSegment
 	p.wantSet = false
 
 	p.run()
 
 	if p.err != nil {
-		return nil, fmt.Errorf("failed to parse glob pattern: %q: %v", input, p.err)
+		return nil, fmt.Errorf("failed to parse glob pattern: %q: %v", p.inputString, p.err)
 	}
 
 	g := &Glob{
-		runes:     p.runes,
-		segments:  p.segments,
-		minLength: p.minLength,
-		maxLength: p.maxLength,
+		patternString: p.inputString,
+		patternRunes:  p.inputRunes,
+		patternIndex:  p.inputIndex,
+		segments:      p.segments,
+		minLength:     p.minLength,
+		maxLength:     p.maxLength,
 	}
 	return g, nil
+}
+
+func (g *Glob) setPattern(str string) {
+	g.patternString, g.patternRunes, g.patternIndex = normString(str)
+}
+
+func (seg *segment) setLiteral(str string) {
+	seg.literalString, seg.literalRunes, seg.literalIndex = normString(str)
 }

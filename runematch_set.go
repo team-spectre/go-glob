@@ -44,7 +44,7 @@ func (m *runeMatchSet) String() string {
 			buf = safeAppendRune(buf, r.Hi)
 		}
 	}
-	return runesToString(buf)
+	return string(buf)
 }
 
 func (m *runeMatchSet) GoString() string {

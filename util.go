@@ -3,6 +3,7 @@ package glob
 import (
 	"fmt"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -74,20 +75,35 @@ func denseBit(ch rune) uint64 {
 	return uint64(1) << shift
 }
 
-func stringToRunes(input string) []rune {
-	return []rune(norm.NFD.String(input))
-}
+func normString(in string) (string, []rune, []uint) {
+	tmp0 := takeByteSlice(uint(len(in)))
+	defer giveByteSlice(tmp0)
 
-func bytesToRunes(input []byte) []rune {
-	return stringToRunes(string(input))
-}
+	// tmp0 <- normalized UTF-8 bytes
+	tmp0 = norm.NFKC.AppendString(tmp0, in)
 
-func runesToString(input []rune) string {
-	return string(input)
-}
+	// outString <- copy tmp0 UTF-8 bytes to new UTF-8 string
+	outString := string(tmp0)
 
-func runesToBytes(input []rune) []byte {
-	return []byte(runesToString(input))
+	// numRunes <- count # of runes in UTF-8 string
+	numRunes := uint(utf8.RuneCountInString(outString))
+
+	tmp1 := takeRuneSlice(numRunes)
+	defer giveRuneSlice(tmp1)
+
+	// tmp1 <- copy UTF-8 runes to new slice of UTF-32 runes
+	// offsetMap <- map from <UTF-32 offset> to <UTF-8 offset>
+	offsetMap := make([]uint, 0, numRunes+1)
+	for bi, ch := range outString {
+		tmp1 = append(tmp1, ch)
+		offsetMap = append(offsetMap, uint(bi))
+	}
+	offsetMap = append(offsetMap, uint(len(outString)))
+
+	// outRunes <- permanent copy of tmp1
+	outRunes := copyRunes(tmp1)
+
+	return outString, outRunes, offsetMap
 }
 
 func equalRunes(a, b []rune) bool {

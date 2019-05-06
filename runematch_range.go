@@ -21,7 +21,7 @@ func (m *runeMatchRange) String() string {
 		buf = append(buf, '-')
 		buf = safeAppendRune(buf, m.Hi)
 	}
-	return runesToString(buf)
+	return string(buf)
 }
 
 func (m *runeMatchRange) GoString() string {

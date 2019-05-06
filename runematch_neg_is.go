@@ -24,7 +24,7 @@ func (m *runeMatchNotIs) String() string {
 	buf := make([]rune, 0, 12)
 	buf = append(buf, '^')
 	buf = safeAppendRune(buf, m.Rune)
-	return runesToString(buf)
+	return string(buf)
 }
 
 func (m *runeMatchNotIs) GoString() string {
