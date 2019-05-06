@@ -8,35 +8,16 @@ gazelle(name = "gazelle")
 go_library(
     name = "go_default_library",
     srcs = [
-        "buffer.go",
-        "const.go",
         "doc.go",
-        "enum.go",
         "glob.go",
-        "match.go",
-        "parse.go",
-        "runematch.go",
-        "runematch_any.go",
-        "runematch_is.go",
-        "runematch_neg_any.go",
-        "runematch_neg_is.go",
-        "runematch_neg_range.go",
-        "runematch_neg_set.go",
-        "runematch_range.go",
-        "runematch_set.go",
-        "util.go",
     ],
     importpath = "github.com/chronos-tachyon/go-glob",
     visibility = ["//visibility:public"],
-    deps = ["@org_golang_x_text//unicode/norm:go_default_library"],
+    deps = ["//internal/guts:go_default_library"],
 )
 
 go_test(
     name = "go_default_test",
-    srcs = [
-        "glob_test.go",
-        "parse_test.go",
-        "runematch_test.go",
-    ],
+    srcs = ["glob_test.go"],
     embed = [":go_default_library"],
 )

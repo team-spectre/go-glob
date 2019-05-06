@@ -1,4 +1,4 @@
-package glob
+package guts
 
 import (
 	"sync"

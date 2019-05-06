@@ -5,103 +5,21 @@ import (
 )
 
 func TestGlob_Match(t *testing.T) {
-	emptyGlob := Glob{
-		segments:  nil,
-		minLength: 0,
-		maxLength: 0,
-	}
-	emptyGlob.setPattern(emptyString)
+	const (
+		emptyString   = ""
+		simpleString  = "foo/bar/[0-9][0-9]-?"
+		complexString = "foo/bar/**/[0-9][0-9]-?*.[ch]"
+	)
 
-	simpleGlob := Glob{
-		segments: []segment{
-			{
-				stype:     literalSegment,
-				minLength: 12,
-				maxLength: 12,
-			},
-			{
-				stype:     runeMatchSegment,
-				matcher:   &digitSet,
-				minLength: 4,
-				maxLength: 4,
-			},
-			{
-				stype:     runeMatchSegment,
-				matcher:   &digitSet,
-				minLength: 3,
-				maxLength: 3,
-			},
-			{
-				stype:     literalSegment,
-				minLength: 2,
-				maxLength: 2,
-			},
-			{
-				stype:     questionSegment,
-				minLength: 1,
-				maxLength: 1,
-			},
-		},
-		minLength: 12,
-		maxLength: 12,
-	}
-	simpleGlob.setPattern(simpleString)
-	simpleGlob.segments[0].setLiteral("foo/bar/")
-	simpleGlob.segments[3].setLiteral("-")
+	const (
+		emptyGoString   = `glob.MustCompile("")`
+		simpleGoString  = `glob.MustCompile("foo/bar/[0-9][0-9]-?")`
+		complexGoString = `glob.MustCompile("foo/bar/**/[0-9][0-9]-?*.[ch]")`
+	)
 
-	complexGlob := Glob{
-		segments: []segment{
-			{
-				stype:     literalSegment,
-				minLength: 13,
-				maxLength: uintMax,
-			},
-			{
-				stype:     doubleStarSlashSegment,
-				minLength: 5,
-				maxLength: uintMax,
-			},
-			{
-				stype:     runeMatchSegment,
-				matcher:   &digitSet,
-				minLength: 5,
-				maxLength: uintMax,
-			},
-			{
-				stype:     runeMatchSegment,
-				matcher:   &digitSet,
-				minLength: 4,
-				maxLength: uintMax,
-			},
-			{
-				stype:     literalSegment,
-				minLength: 3,
-				maxLength: uintMax,
-			},
-			{
-				stype:     starSegment,
-				minLength: 2,
-				maxLength: uintMax,
-			},
-			{
-				stype:     literalSegment,
-				minLength: 2,
-				maxLength: 2,
-			},
-			{
-				stype:     runeMatchSegment,
-				matcher:   &chSet,
-				minLength: 1,
-				maxLength: 1,
-			},
-		},
-		minLength: 13,
-		maxLength: uintMax,
-	}
-	complexGlob.setPattern(complexString)
-	complexGlob.segments[0].setLiteral("foo/bar/")
-	complexGlob.segments[4].setLiteral("-")
-	complexGlob.segments[6].setLiteral(".")
+	emptyGlob := MustCompile(emptyString)
+	simpleGlob := MustCompile(simpleString)
+	complexGlob := MustCompile(complexString)
 
 	type testrow struct {
 		Name           string
@@ -114,16 +32,8 @@ func TestGlob_Match(t *testing.T) {
 
 	testdata := []testrow{
 		{
-			Name:           "Nil",
-			G:              nil,
-			ExpectString:   emptyString,
-			ExpectGoString: emptyGoString,
-			ExpectAccept:   []string{""},
-			ExpectReject:   []string{"a"},
-		},
-		{
 			Name:           "Empty",
-			G:              &emptyGlob,
+			G:              emptyGlob,
 			ExpectString:   emptyString,
 			ExpectGoString: emptyGoString,
 			ExpectAccept:   []string{""},
@@ -131,7 +41,7 @@ func TestGlob_Match(t *testing.T) {
 		},
 		{
 			Name:           "Simple",
-			G:              &simpleGlob,
+			G:              simpleGlob,
 			ExpectString:   simpleString,
 			ExpectGoString: simpleGoString,
 			ExpectAccept: []string{
@@ -148,7 +58,7 @@ func TestGlob_Match(t *testing.T) {
 		},
 		{
 			Name:           "Complex",
-			G:              &complexGlob,
+			G:              complexGlob,
 			ExpectString:   complexString,
 			ExpectGoString: complexGoString,
 			ExpectAccept: []string{
@@ -171,12 +81,6 @@ func TestGlob_Match(t *testing.T) {
 
 	for _, row := range testdata {
 		t.Run(row.Name, func(t *testing.T) {
-			if row.G.String() != row.ExpectString {
-				t.Errorf("String: expected %q, got %q", row.ExpectString, row.G.String())
-			}
-			if row.G.GoString() != row.ExpectGoString {
-				t.Errorf("GoString: expected %q, got %q", row.ExpectGoString, row.G.GoString())
-			}
 			for _, input := range row.ExpectReject {
 				if row.G.Matcher(input).Matches() {
 					t.Errorf("Match %q: unexpected acceptance", input)

@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "buffer.go",
+        "const.go",
+        "doc.go",
+        "enum.go",
+        "glob.go",
+        "match.go",
+        "parse.go",
+        "runematch.go",
+        "runematch_any.go",
+        "runematch_is.go",
+        "runematch_range.go",
+        "runematch_set.go",
+        "types.go",
+        "util.go",
+    ],
+    importpath = "github.com/chronos-tachyon/go-glob/internal/guts",
+    visibility = ["//:__subpackages__"],
+    deps = ["@org_golang_x_text//unicode/norm:go_default_library"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "parse_test.go",
+        "runematch_test.go",
+    ],
+    embed = [":go_default_library"],
+)

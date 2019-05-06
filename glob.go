@@ -2,56 +2,22 @@ package glob
 
 import (
 	"fmt"
+
+	"github.com/chronos-tachyon/go-glob/internal/guts"
 )
 
 // Glob represents a compiled glob pattern, ready to match path names.
 type Glob struct {
-	patternString string
-	patternRunes  []rune
-	patternIndex  []uint
-	segments      []segment
-	minLength     uint
-	maxLength     uint
+	impl guts.Glob
 }
 
-type segment struct {
-	stype         segmentType
-	literalString string
-	literalRunes  []rune
-	literalIndex  []uint
-	matcher       RuneMatcher
-	patternP      uint
-	patternQ      uint
-	minLength     uint
-	maxLength     uint
-}
-
-func (g *Glob) Pattern() string {
-	if g == nil || len(g.segments) <= 0 {
-		return ""
+func Compile(input string) (*Glob, error) {
+	g := new(Glob)
+	if err := g.impl.Compile(input); err != nil {
+		return nil, fmt.Errorf("failed to parse glob pattern: %q: %v", input, err)
 	}
-	return g.patternString
+	return g, nil
 }
-
-func (g *Glob) PatternSubstring(i, j uint) string {
-	bi := g.patternIndex[i]
-	bj := g.patternIndex[j]
-	return g.patternString[bi:bj]
-}
-
-func (g *Glob) String() string {
-	return g.Pattern()
-}
-
-func (g *Glob) GoString() string {
-	if g == nil || len(g.segments) <= 0 {
-		return "nil"
-	}
-	return fmt.Sprintf("glob.MustCompile(%q)", g.patternString)
-}
-
-var _ fmt.Stringer = (*Glob)(nil)
-var _ fmt.GoStringer = (*Glob)(nil)
 
 func MustCompile(input string) *Glob {
 	compiled, err := Compile(input)
@@ -61,38 +27,101 @@ func MustCompile(input string) *Glob {
 	return compiled
 }
 
-func Compile(input string) (*Glob, error) {
-	if input == "" {
-		return nil, nil
-	}
-
-	var p parser
-	p.setInput(input)
-	p.segments = make([]segment, 0, 16)
-	p.state = rootState
-	p.wantSet = false
-
-	p.run()
-
-	if p.err != nil {
-		return nil, fmt.Errorf("failed to parse glob pattern: %q: %v", p.inputString, p.err)
-	}
-
-	g := &Glob{
-		patternString: p.inputString,
-		patternRunes:  p.inputRunes,
-		patternIndex:  p.inputIndex,
-		segments:      p.segments,
-		minLength:     p.minLength,
-		maxLength:     p.maxLength,
-	}
-	return g, nil
+func (g *Glob) Matcher(input string) *Matcher {
+	m := new(Matcher)
+	m.g = &g.impl
+	g.impl.Matcher(&m.impl, input)
+	return m
 }
 
-func (g *Glob) setPattern(str string) {
-	g.patternString, g.patternRunes, g.patternIndex = normString(str)
+func (g *Glob) Pattern() string {
+	return g.impl.Pattern.String
 }
 
-func (seg *segment) setLiteral(str string) {
-	seg.literalString, seg.literalRunes, seg.literalIndex = normString(str)
+func (g *Glob) PatternSubstring(i, j uint) string {
+	return g.impl.Pattern.Substring(i, j)
+}
+
+func (g *Glob) String() string {
+	return g.Pattern()
+}
+
+func (g *Glob) GoString() string {
+	return fmt.Sprintf("glob.MustCompile(%q)", g.Pattern())
+}
+
+var _ fmt.Stringer = (*Glob)(nil)
+var _ fmt.GoStringer = (*Glob)(nil)
+
+type Matcher struct {
+	impl guts.Matcher
+	g    *guts.Glob
+}
+
+func (m *Matcher) Input() string {
+	return m.impl.Input.String
+}
+
+func (m *Matcher) InputSubstring(i, j uint) string {
+	return m.impl.Input.Substring(i, j)
+}
+
+func (m *Matcher) HasNext() bool {
+	return m.impl.HasNext(m.g)
+}
+
+func (m *Matcher) Capture() *Capture {
+	c := new(Capture)
+	c.impl = m.impl.Capture()
+	c.m = &m.impl
+	c.g = m.g
+	return c
+}
+
+func (m *Matcher) OK() bool {
+	return m.impl.Valid
+}
+
+func (m *Matcher) Matches() bool {
+	for m.HasNext() {
+	}
+	return m.OK()
+}
+
+type Capture struct {
+	impl *guts.Capture
+	m    *guts.Matcher
+	g    *guts.Glob
+}
+
+func (c *Capture) PatternLocation() (uint, uint) {
+	return c.impl.PatternP, c.impl.PatternQ
+}
+
+func (c *Capture) PatternStart() uint {
+	return c.impl.PatternP
+}
+
+func (c *Capture) PatternEnd() uint {
+	return c.impl.PatternQ
+}
+
+func (c *Capture) Pattern() string {
+	return c.g.Pattern.Substring(c.impl.PatternP, c.impl.PatternQ)
+}
+
+func (c *Capture) InputLocation() (uint, uint) {
+	return c.impl.InputP, c.impl.InputQ
+}
+
+func (c *Capture) InputStart() uint {
+	return c.impl.InputP
+}
+
+func (c *Capture) InputEnd() uint {
+	return c.impl.InputQ
+}
+
+func (c *Capture) Input() string {
+	return c.m.Input.Substring(c.impl.InputP, c.impl.InputQ)
 }
