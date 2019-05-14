@@ -1,1 +1,1 @@
-package guts // import "github.com/chronos-tachyon/go-glob/internal/guts"
+package guts // import "github.com/team-spectre/go-glob/internal/guts"

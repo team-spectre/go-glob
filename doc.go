@@ -14,4 +14,4 @@
 // matching a path, allowing access to more detailed match information via the
 // Capture type.
 //
-package glob // import "github.com/chronos-tachyon/go-glob"
+package glob // import "github.com/team-spectre/go-glob"

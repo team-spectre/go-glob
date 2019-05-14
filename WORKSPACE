@@ -1,4 +1,4 @@
-workspace(name = "net_chronostachyon_deterministiczip")
+workspace(name = "wtf_spectre_glob")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 

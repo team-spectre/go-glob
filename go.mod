@@ -1,4 +1,4 @@
-module github.com/chronos-tachyon/go-glob
+module github.com/team-spectre/go-glob
 
 go 1.12
 

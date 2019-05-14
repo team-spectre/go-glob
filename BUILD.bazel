@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 load("@bazel_gazelle//:def.bzl", "gazelle")
 
-# gazelle:prefix github.com/chronos-tachyon/go-glob
+# gazelle:prefix github.com/team-spectre/go-glob
 # gazelle:build_file_name BUILD.bazel,BUILD
 gazelle(name = "gazelle")
 
@@ -11,7 +11,7 @@ go_library(
         "doc.go",
         "glob.go",
     ],
-    importpath = "github.com/chronos-tachyon/go-glob",
+    importpath = "github.com/team-spectre/go-glob",
     visibility = ["//visibility:public"],
     deps = ["//internal/guts:go_default_library"],
 )

@@ -18,7 +18,7 @@ go_library(
         "types.go",
         "util.go",
     ],
-    importpath = "github.com/chronos-tachyon/go-glob/internal/guts",
+    importpath = "github.com/team-spectre/go-glob/internal/guts",
     visibility = ["//:__subpackages__"],
     deps = ["@org_golang_x_text//unicode/norm:go_default_library"],
 )

@@ -3,7 +3,7 @@ package glob
 import (
 	"fmt"
 
-	"github.com/chronos-tachyon/go-glob/internal/guts"
+	"github.com/team-spectre/go-glob/internal/guts"
 )
 
 // Glob represents a compiled glob pattern, ready to match path names.
